@@ -33,6 +33,8 @@ Android may ask you to allow installs from your browser or file manager. Allow i
 
 Every push to `main` builds a new APK automatically (see the Actions tab).
 
+The app checks this repo's latest release when it opens and offers **Update now**. You can also check from **Settings → App updates**. The first update asks once to allow "Install unknown apps" for MIT Attendance. This needs the repo to be public, so the app can read the releases without a login.
+
 ## How it works
 
 - `app/src/main/java/.../MainActivity.kt` is the Android shell. It holds two browsers: the real ERP site, kept hidden, and the app's own screens on top.

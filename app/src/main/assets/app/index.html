@@ -176,6 +176,8 @@ p{margin:0}
 .modal.show{transform:none}
 .modal h2{margin:0;font-size:24px;letter-spacing:-.4px}
 .modal p{color:var(--ink-2);font-size:15px}
+.upbar{height:10px;border-radius:99px;background:var(--track);overflow:hidden}
+.upbar i{display:block;height:100%;width:0;background:var(--orange);border-radius:99px;transition:width .3s var(--ease)}
 
 @media (prefers-reduced-motion: reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 </style>
@@ -354,7 +356,8 @@ p{margin:0}
     <button class="srow" id="set-refresh" style="animation-delay:.06s"><span class="t"><b>Refresh now</b><span id="set-synced">Fetch the latest from ERP</span></span><span class="val">Sync</span></button>
     <button class="srow" id="set-erp" style="animation-delay:.09s"><span class="t"><b>Open ERP page</b><span>If something looks wrong, check the ERP itself</span></span><span class="val">Open</span></button>
     <button class="srow" id="set-report" style="animation-delay:.12s"><span class="t"><b>Report a problem</b><span>Copies page details (no password) to send to the developer</span></span><span class="val">Copy</span></button>
-    <div class="srow" style="animation-delay:.15s"><span class="t"><b>Privacy</b><span>Password kept only in this phone's secure storage</span></span></div>
+    <button class="srow" id="set-update" style="animation-delay:.15s"><span class="t"><b>App updates</b><span id="set-upd-text">Check for a newer version</span></span><span class="val">Check</span></button>
+    <div class="srow" style="animation-delay:.18s"><span class="t"><b>Privacy</b><span>Password kept only in this phone's secure storage</span></span></div>
     <div style="margin-top:auto;padding-top:22px;display:flex;flex-direction:column;gap:12px">
       <button class="btn orange" id="logout">Log out</button>
       <div class="credit" id="version">MIT Attendance</div>
@@ -722,10 +725,41 @@ function fail(kind, info){
   ]);
 }
 
+/* ---------- updates ---------- */
+var update = null;
+function mb(bytes){ return bytes ? (bytes / 1048576).toFixed(1) + ' MB' : ''; }
+function showUpdate(){
+  modal('Update available', 'Version ' + update.version + (update.size ? ' · ' + mb(update.size) : '') + ' is ready. It installs over this app and keeps you logged in.', [
+    {label:'Update now', style:'orange', fn:startUpdate},
+    {label:'Later', style:'ghost'}
+  ]);
+}
+function startUpdate(){
+  modal('Downloading update', 'Version ' + update.version, []);
+  var bar = document.createElement('div'); bar.className = 'upbar'; bar.innerHTML = '<i id="upfill"></i>';
+  $('m-actions').appendChild(bar);
+  var pct = document.createElement('p'); pct.id = 'uppct'; pct.textContent = '0%'; $('m-actions').appendChild(pct);
+  if (N) N.downloadUpdate();
+}
+$('set-update').onclick = function(){
+  $('set-upd-text').textContent = 'Checking…';
+  if (N) N.checkUpdate(true); else setTimeout(function(){ App.fromNative('update_none', {}); }, 800);
+};
+function updateMsg(type, p){
+  if (type === 'update_available'){ update = p; $('set-upd-text').textContent = 'Version ' + p.version + ' available'; showUpdate(); return true; }
+  if (type === 'update_none'){ $('set-upd-text').textContent = p && p.error ? p.error : 'You have the latest version'; if (!(p && p.error)) toast('You have the latest version'); else toast(p.error); return true; }
+  if (type === 'update_progress'){ var f = $('upfill'); if (f) f.style.width = p.pct + '%'; var t = $('uppct'); if (t) t.textContent = p.pct + '%'; return true; }
+  if (type === 'update_permission'){ closeModal(); toast('Allow "Install unknown apps" for MIT Attendance, then come back.'); return true; }
+  if (type === 'update_installing'){ closeModal(); return true; }
+  if (type === 'update_failed'){ closeModal(); toast(p.error || 'Update failed.', 'Retry', startUpdate); return true; }
+  return false;
+}
+
 /* ---------- messages from Android ---------- */
 window.App = {
   back: back,
   fromNative: function(type, p){
+    if (updateMsg(type, p)) return;
     if (type === 'status'){ if (p && p.step) setStep(p.step); return; }
     if (type === 'otp_required'){
       finishSync(); otpInput.value = ''; paintOtp();
@@ -785,6 +819,7 @@ function init(){
     } catch (e) {}
   }
   $('email').value = state.email;
+  if (N) setTimeout(function(){ N.checkUpdate(false); }, 2500);
   if (state.data){
     show('home', {replace:true});
     if (state.hasPassword) setTimeout(function(){ sync(true); }, 600);

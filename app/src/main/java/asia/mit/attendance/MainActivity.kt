@@ -52,6 +52,8 @@ class MainActivity : Activity() {
     private var pendingOtp: String = ""
     private var loginAttempt = 0
 
+    private val updater by lazy { Updater(this) { type, json -> toUi(type, json) } }
+
     private val prefs: SharedPreferences by lazy {
         getSharedPreferences("app", Context.MODE_PRIVATE)
     }
@@ -278,6 +280,12 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun checkUpdate(manual: Boolean) { updater.check(manual) }
+
+        @JavascriptInterface
+        fun downloadUpdate() { updater.download() }
+
+        @JavascriptInterface
         fun logout() {
             main.post {
                 secure.edit().clear().apply()
@@ -303,6 +311,11 @@ class MainActivity : Activity() {
                 super.onBackPressed()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::uiWeb.isInitialized) updater.resume()
     }
 
     override fun onDestroy() {
