@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MIT Attendance – Email OTP</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#053F4D}a:hover{color:#021F26}
+input:focus{outline:none}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #053F4D; font-family: 'Inter Tight', system-ui, sans-serif; color: #FFFFFF; display: flex; flex-direction: column; overflow: hidden">
+  <div style="padding: 48px 24px 28px; display: flex; flex-direction: column; gap: 20px">
+    <a href="Connect.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; color: #FFFFFF"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></a>
+    <div style="width: 64px; height: 64px; border-radius: 20px; background: #DD7945; display: flex; align-items: center; justify-content: center">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#021F26" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"></rect><path d="M4 7l8 6 8-6"></path></svg>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <h1 style="margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.8px; line-height: 1.05">Check your email</h1>
+      <p style="margin: 0; font-size: 15px; color: #B9D3D9; line-height: 1.45">The ERP sent a code to <b style="color: #FFFFFF">your ERP email</b>. Enter it to finish logging in.</p>
+    </div>
+  </div>
+
+  <form style="flex: 1; background: #FFFFFF; color: #053F4D; border-radius: 28px 28px 0 0; padding: 28px 22px 22px; display: flex; flex-direction: column; gap: 18px; margin: 0">
+    <fieldset style="border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px">
+      <legend style="font-size: 14px; font-weight: 700; padding: 0; margin-bottom: 10px">One-time code</legend>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px">
+        <sc-for list="{{digits}}" as="d" hint-placeholder-count="6">
+          <input type="text" inputmode="numeric" maxlength="1" aria-label="{{d.label}}" value="{{d.v}}" style="{{d.style}}">
+        </sc-for>
+      </div>
+    </fieldset>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; font-size: 15px; min-height: 44px">
+      <span style="color: #3E6470">Resend code in <b style="color: #053F4D">0:42</b></span>
+      <a href="#" style="font-weight: 700; color: #6B8A92; text-decoration: none" aria-disabled="true">Resend</a>
+    </div>
+
+    <a href="Today.dc.html" style="height: 56px; border-radius: 16px; background: #DD7945; color: #021F26; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-decoration: none">Verify &amp; continue</a>
+
+    <p style="margin: 0; font-size: 14px; color: #35606B; text-align: center; line-height: 1.4">The ERP only asks for this sometimes.<br>Can't find it? Check your spam folder.</p>
+
+    <span style="margin-top: auto; font-size: 13px; color: #35606B; text-align: center">Developed by <b style="color: #053F4D">Kalpesh Katare</b></span>
+  </form>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var vals = ['4', '8', '2', '', '', ''];
+    var base = 'width: 100%; height: 58px; border-radius: 14px; text-align: center; font: 800 24px \'Inter Tight\', sans-serif; color: #053F4D; box-sizing: border-box; padding: 0;';
+    return {
+      digits: vals.map(function (v, i) {
+        var active = i === 3;
+        return {
+          v: v,
+          label: 'Digit ' + (i + 1),
+          style: base + (active ? 'border: 2px solid #053F4D; background: #FFFFFF;' : v ? 'border: 1.5px solid #B9D3D9; background: #FFFFFF;' : 'border: 1.5px solid #B9D3D9; background: #E8F0F2;')
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>
