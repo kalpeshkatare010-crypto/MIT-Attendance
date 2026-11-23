@@ -70,10 +70,11 @@
       return { name: sel.name, id: sel.id, visible: isVisible(sel), selected: sel.selectedIndex,
         options: Array.prototype.map.call(sel.options, function (o) { return o.text.trim() + ' = ' + o.value; }).slice(0, 30) };
     });
+    var links = attendanceLinks().map(function (el) { return (el.innerText || '').trim().slice(0, 40) + ' -> ' + (el.getAttribute('href') || el.getAttribute('onclick') || el.tagName); }).slice(0, 15);
     var custom = document.querySelectorAll('mat-select, .select2, .bootstrap-select, .dropdown-toggle, [role=combobox], [role=listbox]').length;
     post('debug', {
       reason: reason, url: location.href, title: document.title,
-      inputs: inputs, buttons: buttons, iframes: frames, selects: selects, customDropdowns: custom, text: pageText().slice(0, 4000)
+      inputs: inputs, buttons: buttons, iframes: frames, selects: selects, customDropdowns: custom, attendanceLinks: links, text: pageText().slice(0, 4000)
     });
   }
 
@@ -222,6 +223,119 @@
     }
   }
 
+  // ---------- dashboard (current semester) ----------
+  function normCode(c) { return String(c || '').toUpperCase().replace(/\s+/g, ''); }
+  function parseDashboard() {
+    var t = pageText();
+    if (!/my courses/i.test(t) || !/course evaluation/i.test(t)) return null;
+    var dash = { courses: [], semester: null, name: null };
+    var sm = t.match(/\b[A-Z]{2,5}\s+Sem\s+([IVX]+|\d+)\b/i);
+    if (sm) dash.semester = 'Semester ' + sm[1].toUpperCase();
+    var nm = t.match(/Dashboard\s*\n\s*([^\n]+)\n\s*Roll No/i);
+    if (nm) dash.name = nm[1].trim();
+    var lines = t.split('\n').map(function (l) { return l.trim(); });
+    var evalAt = lines.findIndex(function (l) { return /^course evaluation$/i.test(l); });
+    var coursesEnd = evalAt > 0 ? evalAt : lines.length;
+    for (var i = 0; i < coursesEnd; i++) {
+      var m = lines[i].match(/^\d+\.\s*([A-Z]{2,5}\s?\d{3}[A-Z]?)\s*-\s*(.+)$/);
+      if (!m) continue;
+      var c = { code: m[1].trim(), name: m[2].trim(), credits: null, sessions: null, nextLecture: null, faculty: null, kind: null };
+      for (var j = i + 1; j < Math.min(i + 14, coursesEnd); j++) {
+        var l = lines[j];
+        if (/^\d+\.\s*[A-Z]{2,5}\s?\d{3}/.test(l)) break;
+        if (/subject$/i.test(l)) c.kind = l;
+        var cr = l.match(/credits\s*([\d.]+)/i); if (cr) c.credits = parseFloat(cr[1]);
+        var se = l.match(/sessions\s*(\d+)/i); if (se) c.sessions = parseInt(se[1], 10);
+        var ns = l.match(/^next session\s*(.*)$/i);
+        if (ns) {
+          var v = ns[1].trim();
+          if (/not yet planned/i.test(v) || !v) { c.nextLecture = null; }
+          else {
+            c.nextLecture = v;
+            var fac = lines[j + 1];
+            if (fac && !/^\d+\./.test(fac) && !/course evaluation/i.test(fac)) c.faculty = fac;
+          }
+        }
+      }
+      dash.courses.push(c);
+    }
+    if (evalAt > 0) {
+      var att = {};
+      for (var k = evalAt + 1; k < lines.length; k++) {
+        if (/^timetable$/i.test(lines[k])) break;
+        var cm = lines[k].match(/^([A-Z]{2,5}\s?\d{3}[A-Z]?)$/);
+        if (cm) {
+          for (var q = k + 1; q < Math.min(k + 4, lines.length); q++) {
+            if (/^[\d.]+$/.test(lines[q])) { att[normCode(cm[1])] = parseFloat(lines[q]); break; }
+          }
+        }
+      }
+      dash.courses.forEach(function (c) { var a = att[normCode(c.code)]; c.attendance = a == null ? null : a; });
+    }
+    return dash.courses.length ? dash : null;
+  }
+  function baseName(n) {
+    return String(n || '').toLowerCase().replace(/\(.*?\)/g, '').replace(/\b(laboratory|lab|practical)s?\b/g, '').replace(/[^a-z]+/g, ' ').trim();
+  }
+  function yearOf(code) {
+    var m = String(code || '').match(/(\d)\d\d/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  var ORD = ['', '1st', '2nd', '3rd', '4th', '5th'];
+  function combine(cards, dash) {
+    if (!dash) return { subjects: cards, semesters: [], current: null };
+    var byCode = {};
+    cards.forEach(function (c) { byCode[normCode(c.code)] = c; });
+    var used = {};
+    var current = dash.courses.map(function (d) {
+      var c = byCode[normCode(d.code)] || {};
+      used[normCode(d.code)] = true;
+      return {
+        name: d.name, code: d.code,
+        faculty: d.faculty || c.faculty || null,
+        credits: d.credits != null ? d.credits : (c.credits != null ? c.credits : null),
+        attendance: d.attendance != null ? d.attendance : (c.attendance != null ? c.attendance : null),
+        sessionDone: c.sessionDone != null ? c.sessionDone : null,
+        sessions: d.sessions, nextLecture: d.nextLecture
+      };
+    });
+    var bases = current.map(function (c) { return baseName(c.name); });
+    var curYear = null;
+    current.forEach(function (c) { var y = yearOf(c.code); if (y && y < 8 && (curYear == null || y > curYear)) curYear = y; });
+    var earlier = {};
+    cards.forEach(function (c) {
+      var k = normCode(c.code);
+      if (used[k]) return;
+      var isLab = /lab|practical/i.test(c.name);
+      if (isLab && bases.indexOf(baseName(c.name)) >= 0 && yearOf(c.code) === curYear) { current.push(c); used[k] = true; return; }
+      var y = yearOf(c.code);
+      var label = y && y < 8 ? ORD[y] + ' year' : 'Other';
+      if (y === curYear) label = ORD[y] + ' year (earlier)';
+      (earlier[label] = earlier[label] || { label: label, number: y || 0, subjects: [] }).subjects.push(c);
+    });
+    var curLabel = dash.semester || 'Current semester';
+    var semesters = Object.keys(earlier).map(function (k) { return earlier[k]; })
+      .sort(function (a, b) { return a.number - b.number; });
+    semesters.push({ label: curLabel, number: 99, subjects: current });
+    return { subjects: current, semesters: semesters, current: curLabel };
+  }
+  function attendanceLinks() {
+    var els = document.querySelectorAll('a, li, span, button, th, td, [role=menuitem], [onclick]');
+    var named = [], inTable = [], numbers = [];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var t = (el.innerText || '').trim();
+      var href = el.getAttribute('href') || '';
+      var realHref = /attend/i.test(href) && !/^#|javascript/i.test(href);
+      var label = t && t.length < 30 && /^(my\s+|view\s+)?attendance\b/i.test(t) && el.children.length < 4;
+      if (realHref) named.unshift(el);
+      else if (label) (el.closest('table') ? inTable : named).push(el);
+      else if (el.tagName === 'A' && /^\d{1,3}(\.\d+)?$/.test(t) && el.closest('table') &&
+               /attendance/i.test(el.closest('table').innerText || '')) numbers.push(el);
+    }
+    return named.concat(inTable, numbers.slice(0, 1));
+  }
+
   // ---------- semesters ----------
   var ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
   function semNumber(label) {
@@ -256,6 +370,13 @@
   }
   function readCards() {
     return findCards().map(parseCard).filter(function (x) { return x.name; });
+  }
+  function finishCombined(combined, dash) {
+    done = true;
+    var p = findProfile();
+    post('data', { subjects: combined.subjects, semesters: combined.semesters, current: combined.current,
+      photo: p.photo, name: (dash && dash.name) || p.name });
+    snapshot('data');
   }
   function finish(all, plan, results) {
     done = true;
@@ -342,14 +463,28 @@
     var c = cfg();
     var ss = window.sessionStorage;
 
-    // 1. Attendance cards on screen → read them, semester by semester.
-    var walking = false;
-    try { walking = (JSON.parse(ss.getItem('mit_sem') || 'null') || {}).attempt === c.attempt; } catch (e) {}
+    // 1a. Dashboard → remember the current semester's courses.
+    var dash = null;
+    try { var sd = JSON.parse(ss.getItem('mit_dash') || 'null'); if (sd && sd.attempt === c.attempt) dash = sd.dash; } catch (e) {}
+    var fresh = parseDashboard();
+    if (fresh) {
+      dash = fresh;
+      if (!ss.getItem('mit_dash_at_' + c.attempt)) ss.setItem('mit_dash_at_' + c.attempt, String(Date.now()));
+      ss.setItem('mit_dash', JSON.stringify({ attempt: c.attempt, dash: dash }));
+    }
+
+    // 1b. Attendance cards (all semesters) on screen → combine and finish.
     var cards = findCards();
-    if (cards.length || walking) {
-      if (!window.__mitAll) window.__mitAll = readCards();
-      semesterWalk(window.__mitAll);
-      if (!done) startedAt = Date.now();
+    if (cards.length) {
+      done = true; // stop ticking while the cards settle
+      setTimeout(function () { finishCombined(combine(readCards(), dash), dash); }, 900);
+      return;
+    }
+
+    // 1c. Dashboard read but the full attendance page can't be reached → current semester only.
+    var dashAt = +(ss.getItem('mit_dash_at_' + c.attempt) || 0);
+    if (dash && dashAt && Date.now() - dashAt > 18000) {
+      finishCombined(combine([], dash), dash);
       return;
     }
 
@@ -412,17 +547,17 @@
     }
 
     // 4. Logged in but attendance not on screen → open it.
-    if (Date.now() - lastAttendanceClick > 5000 && attendanceClicks < 4) {
-      var links = document.querySelectorAll('a, button, li, span, div[role=menuitem], [routerlink], mat-list-item');
-      for (var i = 0; i < links.length; i++) {
-        var t = (links[i].innerText || '').trim();
-        if (t && t.length < 30 && /attendance/i.test(t) && links[i].children.length < 4) {
-          lastAttendanceClick = Date.now();
-          attendanceClicks++;
-          post('status', { step: 'opening_attendance' });
-          links[i].click();
-          return;
-        }
+    if (Date.now() - lastAttendanceClick > 4000 && attendanceClicks < 5) {
+      var cands = attendanceLinks();
+      if (cands.length) {
+        var el = cands[attendanceClicks % cands.length];
+        lastAttendanceClick = Date.now();
+        attendanceClicks++;
+        post('status', { step: 'opening_attendance' });
+        var href = el.getAttribute('href') || '';
+        if (/attend/i.test(href) && !/^#|javascript/i.test(href)) { location.href = el.href; }
+        else el.click();
+        return;
       }
     }
 
