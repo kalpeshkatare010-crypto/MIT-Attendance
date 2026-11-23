@@ -55,20 +55,14 @@
   }
 
   function studentLink() {
-    var els = document.querySelectorAll('a, li, span, div, td, button, input[type=button], input[type=submit], img, area');
-    var best = null;
-    for (var i = 0; i < els.length; i++) {
-      var el = els[i];
+    var anchors = document.querySelectorAll('a, area, input[type=button], input[type=submit], button');
+    for (var i = 0; i < anchors.length; i++) {
+      var el = anchors[i];
       var t = ((el.innerText || el.textContent || el.value || '') + ' ' + (el.getAttribute('alt') || '') + ' ' + (el.getAttribute('title') || '')).replace(/\s+/g, ' ').trim();
       var href = el.getAttribute('href') || '';
-      if ((t.length < 30 && /student\s*login/i.test(t)) || /student.*log|stud.*login/i.test(href)) {
-        if (el.tagName === 'A' && href && !/^#|^javascript/i.test(href)) return el;
-        var a = el.closest('a[href]') || el.querySelector && el.querySelector('a[href]');
-        if (a && !/^#|^javascript/i.test(a.getAttribute('href'))) return a;
-        if (!best) best = el;
-      }
+      if ((t.length < 30 && /student\s*login/i.test(t)) || /lnkStudent|student.*log/i.test(href)) return el;
     }
-    return best;
+    return null;
   }
   function allLinks() {
     return Array.prototype.map.call(document.querySelectorAll('a[href], area[href]'), function (a) {
@@ -303,15 +297,20 @@
       var t = ((el.innerText || el.textContent || el.value || '') + ' ' + (el.getAttribute('alt') || '')).replace(/\s+/g, ' ').trim();
       if (t.length > 40 || !re.test(t)) continue;
       var a = el.tagName === 'A' ? el : el.closest('a[href]');
-      if (a && a.getAttribute('href') && !/^#|^javascript/i.test(a.getAttribute('href'))) return a;
+      if (a && a.getAttribute('href') && !/^#$/.test(a.getAttribute('href'))) return a;
       if (!fallback) fallback = a || el;
     }
     return fallback;
   }
   function openLink(el) {
     var href = el.getAttribute && el.getAttribute('href') || '';
-    if (el.tagName === 'A' && href && !/^#|^javascript/i.test(href)) location.href = el.href;
-    else el.click();
+    var pb = href.match(/__doPostBack\(\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/);
+    if (pb && typeof window.__doPostBack === 'function') { window.__doPostBack(pb[1], pb[2]); return; }
+    if (/^javascript:/i.test(href)) {
+      try { (0, eval)(decodeURIComponent(href.replace(/^javascript:/i, ''))); return; } catch (e) {}
+    }
+    if (el.tagName === 'A' && href && !/^#/.test(href)) { location.href = el.href; return; }
+    el.click();
   }
 
   // ---------- main loop ----------
@@ -345,10 +344,12 @@
     // "Student Login" can sit in a hover menu, so look at hidden links too.
     var studentKey = 'exam_student_' + c.attempt;
     var tries = +(ss.getItem(studentKey) || 0);
-    if (!pwd && tries < 3 && !ss.getItem('exam_sub_' + c.attempt)) {
+    var lastTry = +(ss.getItem(studentKey + '_at') || 0);
+    if (!pwd && tries < 3 && Date.now() - lastTry > 6000 && !ss.getItem('exam_sub_' + c.attempt)) {
       var stu = studentLink();
       if (stu) {
         ss.setItem(studentKey, String(tries + 1));
+        ss.setItem(studentKey + '_at', String(Date.now()));
         post('status', { step: 'exam_student_login' });
         openLink(stu);
         return;
