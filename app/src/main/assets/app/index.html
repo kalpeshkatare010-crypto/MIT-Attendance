@@ -172,10 +172,16 @@ p{margin:0}
 .scrim{position:fixed;inset:0;background:rgba(2,31,38,.55);opacity:0;pointer-events:none;transition:opacity .3s;z-index:40}
 .scrim.show{opacity:1;pointer-events:auto}
 .modal{position:fixed;left:0;right:0;bottom:0;background:#fff;color:var(--ink);border-radius:28px 28px 0 0;padding:24px 22px calc(env(safe-area-inset-bottom) + 22px);
-  z-index:45;transform:translateY(105%);transition:transform .42s var(--ease);display:flex;flex-direction:column;gap:12px}
+  z-index:45;max-height:85vh;overflow-y:auto;transform:translateY(105%);transition:transform .42s var(--ease);display:flex;flex-direction:column;gap:12px}
 .modal.show{transform:none}
 .modal h2{margin:0;font-size:24px;letter-spacing:-.4px}
 .modal p{color:var(--ink-2);font-size:15px}
+.semchip{align-self:flex-start;margin-top:8px;height:40px;padding:0 12px 0 14px;border-radius:12px;background:rgba(255,255,255,.12);display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;transition:background .2s,transform .15s}
+.semchip:active{transform:scale(.96);background:rgba(255,255,255,.2)}
+.semchip svg{transition:transform .3s var(--ease)}
+.semopt{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:56px;padding:0 16px;border-radius:14px;background:var(--light);font-size:16px;font-weight:600;color:var(--ink);text-align:left;width:100%;animation:rise .35s var(--ease) both}
+.semopt.on{background:var(--deep);color:#fff}
+.semopt small{font-size:13px;font-weight:500;opacity:.8}
 .upbar{height:10px;border-radius:99px;background:var(--track);overflow:hidden}
 .upbar i{display:block;height:100%;width:0;background:var(--orange);border-radius:99px;transition:width .3s var(--ease)}
 
@@ -295,6 +301,7 @@ p{margin:0}
     </div>
     <h1 id="hello">Hi!</h1>
     <p style="font-size:15px;color:var(--muted-dark)" id="sub-count"></p>
+    <button class="semchip" id="semchip" style="display:none" aria-label="Change semester"><span id="semlabel"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
   </div>
   <div class="summary" id="summary">
     <div class="row between" style="align-items:flex-end;gap:10px">
@@ -469,7 +476,17 @@ function status(s){
   if (notStarted) return 'n';
   return a < state.target ? 'o' : 't';
 }
-function subjects(){ return (state.data && state.data.subjects) || []; }
+function semesters(){ return (state.data && state.data.semesters) || []; }
+function currentSem(){
+  var list = semesters(); if (!list.length) return null;
+  var want = state.sem || state.data.current;
+  return list.filter(function(x){ return x.label === want; })[0] || list[list.length-1];
+}
+function subjects(){
+  var cs = currentSem();
+  if (cs) return cs.subjects || [];
+  return (state.data && state.data.subjects) || [];
+}
 function firstName(){
   var n = state.data && state.data.name;
   if (n){ n = n.replace(/^(mr|ms|mrs|miss|dr)\.?\s+/i,'').trim().split(/\s+/)[0]; if (n) return n.charAt(0).toUpperCase() + n.slice(1).toLowerCase(); }
@@ -491,7 +508,11 @@ function renderHome(soft){
   var avg = started.length ? started.reduce(function(t,s){ return t + s.attendance; }, 0) / started.length : null;
   var f = firstName();
   $('hello').textContent = f ? 'Hi, ' + f + '!' : 'Hi there!';
-  $('sub-count').textContent = list.length ? list.length + ' subjects this semester' : 'No subjects yet';
+  var cs = currentSem();
+  var isCur = cs && cs.label === (state.data && state.data.current);
+  $('sub-count').textContent = list.length ? list.length + ' subjects' + (cs ? (isCur ? ' this semester' : ' in this semester') : '') : 'No subjects yet';
+  $('semchip').style.display = cs ? '' : 'none';
+  if (cs) $('semlabel').textContent = cs.label + (isCur ? ' · current' : '');
   paintAvatar($('avatar'));
   $('sync-text').textContent = state.syncing ? 'Syncing…' : ago(state.syncedAt);
   $('sync-label').classList.toggle('spin', !!state.syncing);
@@ -688,6 +709,7 @@ function setStep(step){
 var syncWatch;
 function startSync(background, run, keepStep){
   state.syncing = true; state.background = background;
+  var rs = document.querySelector('.step[data-step="opening_attendance"]'); if (rs) rs.lastChild.textContent = 'Reading attendance';
   if (!background){ show('sync'); if (!keepStep) setStep('open'); }
   else renderHome(true);
   clearTimeout(syncWatch);
@@ -725,6 +747,22 @@ function fail(kind, info){
   ]);
 }
 
+/* ---------- semester picker ---------- */
+$('semchip').onclick = function(){
+  var cs = currentSem(), cur = state.data && state.data.current;
+  modal('Choose semester', 'Your current semester is shown by default.', []);
+  var box = $('m-actions');
+  semesters().slice().reverse().forEach(function(x, i){
+    var b = document.createElement('button');
+    var below = x.subjects.filter(function(s){ return status(s) === 'o'; }).length;
+    b.className = 'semopt' + (cs && x.label === cs.label ? ' on' : '');
+    b.style.animationDelay = (i * 40) + 'ms';
+    b.innerHTML = '<span>' + esc(x.label) + (x.label === cur ? ' <small>· current</small>' : '') + '</span><small>' + x.subjects.length + ' subjects' + (below ? ' · ' + below + ' below ' + state.target + '%' : '') + '</small>';
+    b.onclick = function(){ state.sem = x.label; closeModal(); state.tab = 'risk'; renderHome(); };
+    box.appendChild(b);
+  });
+};
+
 /* ---------- updates ---------- */
 var update = null;
 function mb(bytes){ return bytes ? (bytes / 1048576).toFixed(1) + ' MB' : ''; }
@@ -760,7 +798,17 @@ window.App = {
   back: back,
   fromNative: function(type, p){
     if (updateMsg(type, p)) return;
-    if (type === 'status'){ if (p && p.step) setStep(p.step); return; }
+    if (type === 'status'){
+      if (p && p.step === 'reading_semesters'){
+        setStep('opening_attendance');
+        var st = document.querySelector('.step[data-step="opening_attendance"]');
+        if (st && p.index) st.lastChild.textContent = 'Reading ' + (p.label || 'semester') + ' (' + p.index + ' of ' + p.total + ')';
+        if (state.background && p.index) $('sync-text').textContent = 'Syncing ' + p.index + '/' + p.total + '…';
+      } else if (p && p.step) setStep(p.step);
+      clearTimeout(syncWatch);
+      syncWatch = setTimeout(function(){ if (state.syncing) fail('timeout'); }, 45000);
+      return;
+    }
     if (type === 'otp_required'){
       finishSync(); otpInput.value = ''; paintOtp();
       if (state.email) $('otp-to').textContent = state.email;
@@ -770,6 +818,7 @@ window.App = {
       finishSync();
       var prev = state.data;
       state.data = p.data; state.syncedAt = p.syncedAt || Date.now();
+      if (state.sem && !semesters().some(function(x){ return x.label === state.sem; })) state.sem = null;
       var onHome = stack[stack.length-1] === 'home';
       if (!onHome && stack[stack.length-1] !== 'detail' && stack[stack.length-1] !== 'settings') show('home', {replace:true});
       else renderHome(!!prev);
@@ -795,6 +844,9 @@ function demo(){
       {name:'Fluid Mechanics', code:'PPE 316A', faculty:'Dr.Aarti Hariprasad Mulay', credits:3, attendance:83.3, sessionDone:46.2, nextLecture:null},
       {name:'Industry Supported Honour Course', code:'PPE 803', faculty:'Dr.Suranjana Mandal', credits:4, attendance:0, sessionDone:null, nextLecture:null}
     ]}});
+    var d = state.data, all = d.subjects;
+    d.semesters = [{label:'Semester IV', number:4, subjects:[{name:'Polymer Characterization Laboratory', code:'PPE 322', faculty:'Dr X', credits:1, attendance:12.5, sessionDone:100}, {name:'Introduction to Digital Electronics', code:'ECE262', faculty:'Dr Y', credits:3, attendance:30.5, sessionDone:80.8}]}, {label:'Semester V', number:5, subjects:all}];
+    d.current = 'Semester V'; renderHome();
   }, 2200);
 }
 

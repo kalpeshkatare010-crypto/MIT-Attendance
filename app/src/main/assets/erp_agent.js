@@ -66,9 +66,14 @@
     var buttons = Array.prototype.filter.call(document.querySelectorAll('button, input[type=submit], a, [role=button]'), isVisible)
       .map(buttonText).filter(Boolean).slice(0, 40);
     var frames = Array.prototype.map.call(document.querySelectorAll('iframe'), function (f) { return f.src; });
+    var selects = Array.prototype.map.call(document.querySelectorAll('select'), function (sel) {
+      return { name: sel.name, id: sel.id, visible: isVisible(sel), selected: sel.selectedIndex,
+        options: Array.prototype.map.call(sel.options, function (o) { return o.text.trim() + ' = ' + o.value; }).slice(0, 30) };
+    });
+    var custom = document.querySelectorAll('mat-select, .select2, .bootstrap-select, .dropdown-toggle, [role=combobox], [role=listbox]').length;
     post('debug', {
       reason: reason, url: location.href, title: document.title,
-      inputs: inputs, buttons: buttons, iframes: frames, text: pageText().slice(0, 4000)
+      inputs: inputs, buttons: buttons, iframes: frames, selects: selects, customDropdowns: custom, text: pageText().slice(0, 4000)
     });
   }
 
@@ -217,6 +222,112 @@
     }
   }
 
+  // ---------- semesters ----------
+  var ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10 };
+  function semNumber(label) {
+    var m = String(label).match(/sem(?:ester)?\s*[-:.]?\s*([ivx]+|\d+)\b/i) || String(label).match(/^\s*([ivx]+|\d+)\s*$/i);
+    if (!m) return null;
+    var k = m[1].toLowerCase();
+    return ROMAN[k] || parseInt(k, 10) || null;
+  }
+  function isPlaceholder(o) {
+    var t = (o.text || '').trim();
+    return !t || /^(-+|select|choose|all)\b/i.test(t);
+  }
+  function findSemSelect() {
+    var sels = Array.prototype.filter.call(document.querySelectorAll('select'), function (sel) {
+      return sel.options.length > 1;
+    });
+    var named = sels.filter(function (sel) {
+      return /sem|term|year|session|batch/i.test(attrs(sel) + ' ' + Array.prototype.map.call(sel.options, function (o) { return o.text; }).join(' '));
+    });
+    if (named.length) return named[0];
+    var vis = sels.filter(isVisible);
+    return vis.length === 1 ? vis[0] : null;
+  }
+  function signature(cards) {
+    return cards.map(function (c) { return (c.innerText || '').split('\n')[0]; }).join('|');
+  }
+  function pickSelect(sel, value) {
+    sel.value = value;
+    sel.dispatchEvent(new Event('input', { bubbles: true }));
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    if (window.jQuery) { try { window.jQuery(sel).val(value).trigger('change'); } catch (e) {} }
+  }
+  function readCards() {
+    return findCards().map(parseCard).filter(function (x) { return x.name; });
+  }
+  function finish(all, plan, results) {
+    done = true;
+    var p = findProfile();
+    var payload = { subjects: all, photo: p.photo, name: p.name, semesters: [], current: null };
+    if (plan && results) {
+      plan.options.forEach(function (o, i) {
+        if (results[i] && results[i].length) payload.semesters.push({ label: o.text, number: semNumber(o.text), subjects: results[i] });
+      });
+      // the semester shown by default, or the highest-numbered one
+      var cur = null;
+      if (plan.initial != null && results[plan.initial] && results[plan.initial].length) cur = plan.options[plan.initial].text;
+      if (!cur && payload.semesters.length) {
+        var best = payload.semesters.slice().sort(function (a, b) { return (b.number || 0) - (a.number || 0); })[0];
+        cur = (best.number ? best : payload.semesters[payload.semesters.length - 1]).label;
+      }
+      payload.current = cur;
+    }
+    post('data', payload);
+    snapshot('data');
+    try { sessionStorage.removeItem('mit_sem'); } catch (e) {}
+  }
+  // Walks every semester in the dropdown, one per tick. Progress lives in
+  // sessionStorage so it survives the page reloading on each change.
+  function semesterWalk(allSubjects) {
+    var ss = window.sessionStorage;
+    var st = null;
+    try { st = JSON.parse(ss.getItem('mit_sem') || 'null'); } catch (e) {}
+    if (st && st.attempt !== cfg().attempt) { st = null; ss.removeItem('mit_sem'); }
+    var sel = findSemSelect();
+    if (!st) {
+      if (!sel) { finish(allSubjects, null, null); return; }
+      var opts = [];
+      var initial = null;
+      Array.prototype.forEach.call(sel.options, function (o, i) {
+        if (isPlaceholder(o)) return;
+        if (i === sel.selectedIndex) initial = opts.length;
+        opts.push({ text: o.text.trim(), value: o.value });
+      });
+      opts = opts.slice(0, 12);
+      if (!opts.length) { finish(allSubjects, null, null); return; }
+      st = { attempt: cfg().attempt, options: opts, initial: initial, idx: 0, results: {}, firstSig: signature(findCards()), changedAt: 0, lastSig: null, origValue: sel.value };
+      post('status', { step: 'reading_semesters', total: opts.length });
+    }
+    if (!sel) { finish(allSubjects, st, st.results); return; }
+    var o = st.options[st.idx];
+    if (!st.changedAt) {
+      st.lastSig = signature(findCards());
+      st.changedAt = Date.now();
+      ss.setItem('mit_sem', JSON.stringify(st));
+      post('status', { step: 'reading_semesters', index: st.idx + 1, total: st.options.length, label: o.text });
+      pickSelect(sel, o.value);
+      return;
+    }
+    var cards = findCards();
+    var sig = signature(cards);
+    var waited = Date.now() - st.changedAt;
+    var changed = sig !== st.lastSig;
+    // read once the cards have changed and had a moment to settle, or after 7s
+    if ((changed && waited > 1500) || waited > 7000 || (st.idx === 0 && st.lastSig === sig && waited > 3500)) {
+      st.results[st.idx] = cards.length ? readCards() : [];
+      st.idx++;
+      st.changedAt = 0;
+      if (st.idx >= st.options.length) {
+        ss.setItem('mit_sem', JSON.stringify(st));
+        finish(allSubjects, st, st.results);
+        return;
+      }
+      ss.setItem('mit_sem', JSON.stringify(st));
+    }
+  }
+
   // ---------- main loop ----------
   var lastSnap = 0;
   function tick() {
@@ -231,17 +342,15 @@
     var c = cfg();
     var ss = window.sessionStorage;
 
-    // 1. Attendance cards on screen → read them.
+    // 1. Attendance cards on screen → read them, semester by semester.
+    var walking = false;
+    try { walking = (JSON.parse(ss.getItem('mit_sem') || 'null') || {}).attempt === c.attempt; } catch (e) {}
     var cards = findCards();
-    if (cards.length) {
-      var subjects = cards.map(parseCard).filter(function (s) { return s.name; });
-      if (subjects.length) {
-        done = true;
-        var p = findProfile();
-        post('data', { subjects: subjects, photo: p.photo, name: p.name });
-        snapshot('data');
-        return;
-      }
+    if (cards.length || walking) {
+      if (!window.__mitAll) window.__mitAll = readCards();
+      semesterWalk(window.__mitAll);
+      if (!done) startedAt = Date.now();
+      return;
     }
 
     var cap = Array.prototype.some.call(document.querySelectorAll('input, img, canvas'), function (el) {
