@@ -196,6 +196,15 @@ p{margin:0}
 .grow .name{font-size:15px;font-weight:700;line-height:1.25}
 .grow .meta{font-size:13px;color:var(--ink-2)}
 .connect{background:#fff;color:var(--ink);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:14px;animation:rise .5s var(--ease) both}
+.seg{position:relative;display:flex;background:rgba(255,255,255,.1);border-radius:14px;padding:4px;margin-top:10px}
+.seg button{position:relative;z-index:1;flex:1;height:40px;border-radius:11px;font-size:15px;font-weight:600;color:var(--muted-dark);transition:color .3s}
+.seg button.on{color:var(--on-orange)}
+.seg .ind{position:absolute;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:11px;background:var(--orange);transition:transform .38s var(--ease)}
+.seg.right .ind{transform:translateX(100%)}
+.mark{min-width:64px;flex:none;border-radius:12px;padding:6px 8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;font-size:19px;line-height:1.1}
+.mark small{font-size:11px;font-weight:600;opacity:.85}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.chips span{font-size:12px;font-weight:600;background:var(--light);border-radius:8px;padding:3px 8px;color:var(--ink-3)}
 .upbar{height:10px;border-radius:99px;background:var(--track);overflow:hidden}
 .upbar i{display:block;height:100%;width:0;background:var(--orange);border-radius:99px;transition:width .3s var(--ease)}
 
@@ -399,6 +408,7 @@ p{margin:0}
     </div>
     <h1>Exam results</h1>
     <p style="font-size:15px;color:var(--muted-dark)" id="ex-sub">End-semester results from the exam cell</p>
+    <div class="seg" id="ex-seg" style="display:none" role="tablist"><span class="ind"></span><button class="on" data-v="final" role="tab">Final results</button><button data-v="internal" role="tab">Internal marks</button></div>
     <button class="semchip" id="ex-semchip" style="display:none" aria-label="Change semester"><span id="ex-semlabel"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
   </div>
   <div id="ex-gpa-box"></div>
@@ -424,7 +434,7 @@ var $ = function(id){ return document.getElementById(id); };
 var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
 var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-var exam = { prn:'', data:null, syncedAt:0, sem:null, syncing:false, error:'' };
+var exam = { prn:'', data:null, syncedAt:0, sem:null, isem:null, view:'final', syncing:false, error:'' };
 var state = { email:'', hasPassword:false, data:null, syncedAt:0, target:75, version:'1.0', tab:'risk', current:null, syncing:false, background:false };
 var stack = [];
 
@@ -824,6 +834,45 @@ function fail(kind, info){
 /* ---------- exam results ---------- */
 function exSems(){ return (exam.data && exam.data.semesters) || []; }
 function exCur(){ var l = exSems(); if (!l.length) return null; return l.filter(function(x){ return x.label === exam.sem; })[0] || l[0]; }
+function inSems(){ return (exam.data && exam.data.internal) || []; }
+function inCur(){ var l = inSems(); if (!l.length) return null; return l.filter(function(x){ return x.label === exam.isem; })[0] || l[0]; }
+$('ex-seg').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if (!b) return;
+  exam.view = b.getAttribute('data-v'); renderResults();
+});
+function renderInternal(soft){
+  var cs = inCur(), list = $('ex-list');
+  $('ex-gpa-box').innerHTML = '';
+  $('ex-semchip').style.display = cs ? '' : 'none';
+  if (!cs){
+    $('ex-sub').textContent = 'Final internal marks';
+    list.innerHTML = '<div class="empty"><b>No internal marks yet</b>' + (exam.syncing ? 'Reading the exam portal…' : 'They will show here once the exam cell publishes them.') + '</div>';
+    return;
+  }
+  $('ex-semlabel').textContent = cs.label + (cs === inSems()[0] ? ' · latest' : '');
+  var H = cs.headers;
+  var find = function(re, avoid){ for (var i = 0; i < H.length; i++) if (re.test(H[i]) && !(avoid && avoid.test(H[i]))) return i; return -1; };
+  var codeI = find(/code/i), nameI = find(/course|subject|paper|title/i, /code/i);
+  var outI = find(/out\s*of|max/i), totI = -1;
+  for (var i = H.length - 1; i >= 0; i--) if (/total|final|obtained|marks/i.test(H[i]) && i !== outI) { totI = i; break; }
+  $('ex-sub').textContent = cs.rows.length + ' subjects · final internal marks';
+  list.innerHTML = cs.rows.map(function(r, k){
+    var name = nameI >= 0 ? r[nameI] : (codeI >= 0 ? r[codeI] : r[0]);
+    var total = totI >= 0 ? r[totI] : '';
+    var out = outI >= 0 ? r[outI] : '';
+    var t = parseFloat(total), o = parseFloat(out);
+    var low = !isNaN(t) && !isNaN(o) && o > 0 && t / o < 0.4;
+    var chips = H.map(function(h, j){
+      if (j === codeI || j === nameI || j === totI || j === outI || !r[j] || /^sr|^s\.?\s*no|^#$/i.test(h)) return '';
+      return '<span>' + esc(h) + ' · ' + esc(r[j]) + '</span>';
+    }).join('');
+    return '<div class="grow" style="animation-delay:' + (soft ? 0 : k * 50) + 'ms;align-items:flex-start">' +
+      '<span class="mark ' + (total ? (low ? 'grade o' : 'grade t') : 'grade n') + '" style="width:auto;height:auto;min-height:48px">' + esc(total || '—') + (out ? '<small>of ' + esc(out) + '</small>' : '') + '</span>' +
+      '<span style="flex:1;display:flex;flex-direction:column;gap:2px"><span class="name">' + esc(name) + '</span>' +
+      (codeI >= 0 && nameI >= 0 ? '<span class="meta">' + esc(r[codeI]) + '</span>' : '') +
+      (chips ? '<span class="chips">' + chips + '</span>' : '') + '</span></div>';
+  }).join('');
+}
 function gradeClass(g){
   if (!g) return 'n';
   return /^(f|ab|fail|ff|absent|x)/i.test(g) ? 'o' : 't';
@@ -837,6 +886,7 @@ function renderResults(soft){
   $('ex-semchip').style.display = cs ? '' : 'none';
   if (cs) $('ex-semlabel').textContent = cs.label + (cs === exSems()[0] ? ' · latest' : '');
   if (!exam.prn){
+    $('ex-seg').style.display = 'none';
     gbox.innerHTML = '';
     $('ex-sub').textContent = 'End-semester results from the exam cell';
     list.innerHTML = '<form class="connect" id="ex-form" novalidate>' +
@@ -853,6 +903,10 @@ function renderResults(soft){
     if (exam.error){ var er2 = $('ex-error'); er2.textContent = exam.error; er2.classList.add('show'); }
     return;
   }
+  $('ex-seg').style.display = exam.prn ? '' : 'none';
+  $('ex-seg').classList.toggle('right', exam.view === 'internal');
+  $('ex-seg').querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-v') === exam.view); });
+  if (exam.view === 'internal' && (exam.data || !exam.syncing)){ renderInternal(soft); return; }
   if (!cs){
     gbox.innerHTML = '';
     $('ex-sub').textContent = exam.syncing ? 'Logging in to the exam portal…' : 'No results loaded yet';
@@ -884,14 +938,16 @@ function exSync(prn){
 $('ex-refresh').onclick = function(){ exSync(''); };
 $('avatar3').onclick = function(){ show('settings'); };
 $('ex-semchip').onclick = function(){
-  var cs = exCur();
-  modal('Choose semester', 'Your latest result is shown by default.', []);
-  exSems().forEach(function(x, i){
+  var internal = exam.view === 'internal';
+  var cs = internal ? inCur() : exCur();
+  modal('Choose semester', internal ? 'Latest internal marks are shown by default.' : 'Your latest result is shown by default.', []);
+  (internal ? inSems() : exSems()).forEach(function(x, i){
     var b = document.createElement('button');
     b.className = 'semopt' + (cs && x.label === cs.label ? ' on' : '');
     b.style.animationDelay = (i * 40) + 'ms';
-    b.innerHTML = '<span>' + esc(x.label) + (i === 0 ? ' <small>· latest</small>' : '') + '</span><small>' + (x.sgpa != null ? 'SGPA ' + x.sgpa.toFixed(2) : x.subjects.length + ' subjects') + '</small>';
-    b.onclick = function(){ exam.sem = x.label; closeModal(); renderResults(); };
+    var n = x.subjects ? x.subjects.length : x.rows.length;
+    b.innerHTML = '<span>' + esc(x.label) + (i === 0 ? ' <small>· latest</small>' : '') + '</span><small>' + (x.sgpa != null ? 'SGPA ' + x.sgpa.toFixed(2) : n + ' subjects') + '</small>';
+    b.onclick = function(){ if (internal) exam.isem = x.label; else exam.sem = x.label; closeModal(); renderResults(); };
     $('m-actions').appendChild(b);
   });
 };
@@ -904,6 +960,7 @@ function examMsg(type, p){
   }
   if (type === 'status' && p && /^exam_|reading_results/.test(p.step || '')){
     if (p.step === 'reading_results') $('ex-sync-text').textContent = 'Reading ' + (p.label || 'results') + '…';
+    if (p.step === 'reading_internal') $('ex-sync-text').textContent = 'Internal marks: ' + (p.label || '') + '…';
     return true;
   }
   if (type === 'exam_need_prn'){ exam.syncing = false; exam.prn = ''; renderResults(); return true; }
@@ -927,7 +984,9 @@ function exDemo(){
       {code:'PPE252', name:'Polymer Processing', credits:3, grade:'B+', gradePoint:8},
       {code:'PPE253', name:'Heat Transfer', credits:3, grade:'F', gradePoint:0} ]},
     { label:'Semester III', number:3, sgpa:8.10, cgpa:7.96, result:'Pass', subjects:[
-      {code:'PPE201', name:'Polymer Chemistry', credits:4, grade:'O', gradePoint:10} ]} ]}});
+      {code:'PPE201', name:'Polymer Chemistry', credits:4, grade:'O', gradePoint:10} ]} ],
+    internal: [{ label:'Semester V', number:5, headers:['Course Code','Course Name','CA 1','CA 2','Total','Out Of'], rows:[
+      ['PPE301','Elastomer Technology','16','19','35','40'], ['PPE302','Polymer Characterization','6','8','14','40'], ['ECE311','Embedded System Application','15','17','32','40'] ]}] }});
 }
 
 /* ---------- semester picker ---------- */

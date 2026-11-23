@@ -48,9 +48,32 @@
       selects: Array.prototype.map.call(document.querySelectorAll('select'), function (s) {
         return { name: s.name, id: s.id, options: Array.prototype.map.call(s.options, function (o) { return o.text.trim() + ' = ' + o.value; }).slice(0, 25) };
       }),
+      links: allLinks(),
       tables: Array.prototype.slice.call(document.querySelectorAll('table'), 0, 6).map(function (t) { return txt(t).slice(0, 600); }),
       text: pageText().slice(0, 3500)
     });
+  }
+
+  function studentLink() {
+    var els = document.querySelectorAll('a, li, span, div, td, button, input[type=button], input[type=submit], img, area');
+    var best = null;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var t = ((el.innerText || el.textContent || el.value || '') + ' ' + (el.getAttribute('alt') || '') + ' ' + (el.getAttribute('title') || '')).replace(/\s+/g, ' ').trim();
+      var href = el.getAttribute('href') || '';
+      if ((t.length < 30 && /student\s*login/i.test(t)) || /student.*log|stud.*login/i.test(href)) {
+        if (el.tagName === 'A' && href && !/^#|^javascript/i.test(href)) return el;
+        var a = el.closest('a[href]') || el.querySelector && el.querySelector('a[href]');
+        if (a && !/^#|^javascript/i.test(a.getAttribute('href'))) return a;
+        if (!best) best = el;
+      }
+    }
+    return best;
+  }
+  function allLinks() {
+    return Array.prototype.map.call(document.querySelectorAll('a[href], area[href]'), function (a) {
+      return ((a.innerText || a.textContent || a.getAttribute('alt') || '').replace(/\s+/g, ' ').trim().slice(0, 30)) + ' -> ' + a.getAttribute('href');
+    }).slice(0, 40);
   }
 
   // ---------- results parsing ----------
@@ -161,50 +184,97 @@
   }
   function placeholder(o) { var t = (o.text || '').trim(); return !t || /^(-+|select|choose|all)\b/i.test(t); }
 
-  function finish(groups) {
-    if (!groups.length || !groups.some(function (g) { return g.subjects && g.subjects.length; })) {
-      // nothing readable here: keep looking for the results page
-      try { ss.removeItem('exam_sem'); } catch (e) {}
-      window.__examNoWalk = true;
-      return;
-    }
+  // ---------- final internal marks ----------
+  function readInternal() {
+    var tables = Array.prototype.filter.call(document.querySelectorAll('table'), function (t) { return !t.querySelector('table'); });
+    var groups = [];
+    tables.forEach(function (t) {
+      var rows = rowsOf(t);
+      for (var h = 0; h < Math.min(rows.length, 6); h++) {
+        var head = rows[h];
+        if (head.length < 3) continue;
+        var subj = colIndex(head, /course|subject|paper|title|code/i);
+        if (subj < 0) continue;
+        var body = rows.slice(h + 1).filter(function (r) {
+          return r.length >= head.length - 1 && r.some(function (c) { return /\d/.test(c); }) && r.join('').trim();
+        });
+        if (!body.length) continue;
+        groups.push({ label: labelNear(t), headers: head, rows: body.slice(0, 40) });
+        break;
+      }
+    });
+    return groups;
+  }
+
+  // ---------- phases: results, then final internal marks ----------
+  function phase() {
+    var p = null;
+    try { p = JSON.parse(ss.getItem('exam_phase') || 'null'); } catch (e) {}
+    if (!p || p.attempt !== cfg().attempt) p = { attempt: cfg().attempt, phase: 'results', results: [], internal: [], at: Date.now() };
+    return p;
+  }
+  function savePhase(p) { ss.setItem('exam_phase', JSON.stringify(p)); }
+
+  var ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8 };
+  function semNum(label) {
+    var m = String(label || '').match(/Semester\s+([IVX]+|\d+)/);
+    return m ? (ROMAN[m[1].toLowerCase()] || parseInt(m[1], 10) || 0) : 0;
+  }
+  function publish(p) {
     done = true;
-    // merge by label, newest semester first
-    var ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8 };
     var out = [];
-    groups.forEach(function (g) {
+    p.results.forEach(function (g) {
       var label = prettySem(g.label);
-      var m = label.match(/Semester\s+([IVX]+|\d+)/);
-      var n = m ? (ROMAN[m[1].toLowerCase()] || parseInt(m[1], 10) || 0) : 0;
       var dup = out.filter(function (x) { return x.label === label; })[0];
       if (dup) { if (!dup.subjects.length) dup.subjects = g.subjects; return; }
-      out.push({ label: label, number: n, sgpa: g.sgpa, cgpa: g.cgpa, result: g.result, subjects: g.subjects });
+      out.push({ label: label, number: semNum(label), sgpa: g.sgpa, cgpa: g.cgpa, result: g.result, subjects: g.subjects });
     });
     out.sort(function (a, b) { return b.number - a.number; });
     var cg = null;
     out.forEach(function (x) { if (cg == null && x.cgpa != null) cg = x.cgpa; });
-    post('exam_data', { semesters: out, cgpa: cg });
+    var internal = [];
+    p.internal.forEach(function (g) {
+      var label = prettySem(g.label);
+      if (internal.some(function (x) { return x.label === label; })) return;
+      internal.push({ label: label, number: semNum(label), headers: g.headers, rows: g.rows });
+    });
+    internal.sort(function (a, b) { return b.number - a.number; });
+    if (!out.length && !internal.length) { post('exam_timeout', { url: location.href }); snapshot('nothing_read'); }
+    else post('exam_data', { semesters: out, cgpa: cg, internal: internal });
     snapshot('data');
+    try { ss.removeItem('exam_sem'); ss.removeItem('exam_phase'); } catch (e) {}
+  }
+  // Called when a walk ends on the current page.
+  function finish(groups, mode) {
+    var p = phase();
+    var useful = groups.filter(function (g) { return (g.subjects && g.subjects.length) || (g.rows && g.rows.length); });
     try { ss.removeItem('exam_sem'); } catch (e) {}
+    if (!useful.length) { window.__examNoWalk = true; return; }   // not the right page; keep looking
+    if (mode === 'internal') { p.internal = useful; publish(p); return; }
+    p.results = useful; p.phase = 'internal'; p.at = Date.now(); p.resultsUrl = location.href;
+    savePhase(p);
+    window.__examNoWalk = true;
+    post('status', { step: 'exam_opening_internal' });
   }
 
-  function walk() {
+  function walk(mode) {
+    var reader = mode === 'internal' ? readInternal : readResults;
     var st = null;
     try { st = JSON.parse(ss.getItem('exam_sem') || 'null'); } catch (e) {}
-    if (st && st.attempt !== cfg().attempt) st = null;
+    if (st && (st.attempt !== cfg().attempt || st.mode !== mode)) st = null;
     var sel = semSelect();
     if (!st) {
-      if (!sel) { finish(readResults()); return; }
+      if (!sel) { finish(reader(), mode); return; }
       var opts = Array.prototype.filter.call(sel.options, function (o) { return !placeholder(o); })
         .map(function (o) { return { text: o.text.trim(), value: o.value }; }).slice(0, 12);
-      st = { attempt: cfg().attempt, options: opts, idx: 0, results: [], changedAt: 0, lastSig: '', pressed: false };
+      st = { attempt: cfg().attempt, mode: mode, options: opts, idx: 0, results: [], changedAt: 0, lastSig: '', pressed: false };
     }
-    if (!sel || st.idx >= st.options.length) { finish(st.results); return; }
+    if (!sel || st.idx >= st.options.length) { finish(st.results, mode); return; }
     var o = st.options[st.idx];
     if (!st.changedAt) {
       st.lastSig = signature(); st.changedAt = Date.now(); st.pressed = false;
       ss.setItem('exam_sem', JSON.stringify(st));
-      post('status', { step: 'reading_results', index: st.idx + 1, total: st.options.length, label: o.text });
+      post('status', { step: mode === 'internal' ? 'reading_internal' : 'reading_results', index: st.idx + 1, total: st.options.length, label: o.text });
       sel.value = o.value;
       sel.dispatchEvent(new Event('change', { bubbles: true }));
       return;
@@ -217,35 +287,72 @@
       if (b) { b.click(); return; }
     }
     if ((sig !== st.lastSig && waited > 1200) || waited > 8000) {
-      readResults().forEach(function (g) { if (!g.label) g.label = o.text; st.results.push(g); });
+      reader().forEach(function (g) { g.label = o.text; st.results.push(g); });
       st.idx++; st.changedAt = 0;
       ss.setItem('exam_sem', JSON.stringify(st));
-      if (st.idx >= st.options.length) finish(st.results);
+      if (st.idx >= st.options.length) finish(st.results, mode);
     }
   }
 
+  // A link by its text or address, even inside a closed menu.
+  function findLink(re) {
+    var els = document.querySelectorAll('a, li, span, td, button, input[type=button], input[type=submit], area');
+    var fallback = null;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var t = ((el.innerText || el.textContent || el.value || '') + ' ' + (el.getAttribute('alt') || '')).replace(/\s+/g, ' ').trim();
+      if (t.length > 40 || !re.test(t)) continue;
+      var a = el.tagName === 'A' ? el : el.closest('a[href]');
+      if (a && a.getAttribute('href') && !/^#|^javascript/i.test(a.getAttribute('href'))) return a;
+      if (!fallback) fallback = a || el;
+    }
+    return fallback;
+  }
+  function openLink(el) {
+    var href = el.getAttribute && el.getAttribute('href') || '';
+    if (el.tagName === 'A' && href && !/^#|^javascript/i.test(href)) location.href = el.href;
+    else el.click();
+  }
+
   // ---------- main loop ----------
+  var RESULT_RE = /^(exam\s*)?results?$|result|grade\s*card|mark\s*sheet|marksheet|statement\s+of\s+marks/i;
+  var INTERNAL_RE = /final\s*internal|internal\s*marks|internal\s*assessment/i;
   function tick() {
     if (done) return;
     var c = cfg();
     if (Date.now() - lastSnap > 5000) { lastSnap = Date.now(); snapshot('progress'); }
+    var p = phase();
 
-    var walking = false;
-    try { walking = (JSON.parse(ss.getItem('exam_sem') || 'null') || {}).attempt === c.attempt; } catch (e) {}
-    var pwdHere = Array.prototype.some.call(document.querySelectorAll('input[type=password]'), isVisible);
-    var resultsPage = !window.__examNoWalk && !pwdHere && semSelect();
-    if (walking || resultsPage || (!window.__examNoWalk && looksLikeResults())) { walk(); startedAt = Date.now(); return; }
+    var walking = null;
+    try { var w = JSON.parse(ss.getItem('exam_sem') || 'null'); if (w && w.attempt === c.attempt) walking = w.mode; } catch (e) {}
+    if (walking) { walk(walking); startedAt = Date.now(); return; }
 
     var pwd = Array.prototype.filter.call(document.querySelectorAll('input[type=password]'), isVisible)[0];
+
+    if (!pwd && !window.__examNoWalk) {
+      if (p.phase === 'results' && (semSelect() || looksLikeResults())) {
+        walk('results'); startedAt = Date.now(); return;
+      }
+      if (p.phase === 'internal' && p.clickedInternal && (semSelect() || readInternal().length)) {
+        walk('internal'); startedAt = Date.now(); return;
+      }
+    }
+
     var cap = Array.prototype.some.call(document.querySelectorAll('input, img'), function (el) {
       return isVisible(el) && /captcha/i.test(attrs(el) + ' ' + (el.src || ''));
     });
 
-    // Pick "Student Login" first if the page offers it.
+    // "Student Login" can sit in a hover menu, so look at hidden links too.
     var studentKey = 'exam_student_' + c.attempt;
-    if (!ss.getItem(studentKey)) {
-      var stu = findClickable(/^student\s*login$/i, 20);
-      if (stu) { ss.setItem(studentKey, '1'); stu.click(); return; }
+    var tries = +(ss.getItem(studentKey) || 0);
+    if (!pwd && tries < 3 && !ss.getItem('exam_sub_' + c.attempt)) {
+      var stu = studentLink();
+      if (stu) {
+        ss.setItem(studentKey, String(tries + 1));
+        post('status', { step: 'exam_student_login' });
+        openLink(stu);
+        return;
+      }
     }
 
     if (pwd) {
@@ -257,6 +364,7 @@
         if (user) setValue(user, c.prn);
         setValue(pwd, c.prn);
         ss.setItem(key, String(Date.now()));
+        p.at = Date.now(); savePhase(p);
         post('status', { step: 'exam_logging_in' });
         setTimeout(function () {
           var b = (pwd.form && pwd.form.querySelector('input[type=submit], button[type=submit], input[type=image]')) ||
@@ -272,24 +380,26 @@
       return;
     }
 
-    // Logged in → open the results page.
-    if (Date.now() - lastClick > 4000 && clicks < 5) {
-      var list = clickables().filter(function (el) {
-        var t = txt(el);
-        return t && t.length < 40 && /result|grade\s*card|mark\s*sheet|marksheet|statement\s+of\s+marks/i.test(t);
-      });
-      // prefer real links
-      list.sort(function (a, b) { return (b.tagName === 'A' ? 1 : 0) - (a.tagName === 'A' ? 1 : 0); });
-      if (list.length) {
-        var el = list[clicks % list.length];
+    // Logged in: open the results page, then the final internal marks page.
+    if (Date.now() - lastClick > 4000 && clicks < 6) {
+      var target = p.phase === 'internal' ? findLink(INTERNAL_RE) : findLink(RESULT_RE);
+      if (target) {
         clicks++; lastClick = Date.now();
-        post('status', { step: 'exam_opening_results' });
-        el.click();
+        if (p.phase === 'internal') { p.clickedInternal = true; savePhase(p); window.__examNoWalk = false; }
+        post('status', { step: p.phase === 'internal' ? 'exam_opening_internal' : 'exam_opening_results' });
+        openLink(target);
         return;
       }
     }
 
-    if (Date.now() - startedAt > 45000) {
+    // Move on when a section can't be found.
+    var since = Date.now() - (p.at || startedAt);
+    if (p.phase === 'results' && since > 25000 && ss.getItem('exam_sub_' + c.attempt)) {
+      p.phase = 'internal'; p.at = Date.now(); savePhase(p); clicks = 0; window.__examNoWalk = false; return;
+    }
+    if (p.phase === 'internal' && since > 25000) { publish(p); return; }
+
+    if (Date.now() - startedAt > 60000) {
       done = true;
       post('exam_timeout', { url: location.href });
       snapshot('timeout');
