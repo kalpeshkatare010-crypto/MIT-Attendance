@@ -99,13 +99,21 @@ class MainActivity : Activity() {
         erpWeb.webChromeClient = WebChromeClient()
         erpWeb.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                val host = request.url.host ?: return true
-                // Stay on the ERP; block anything else.
-                return !(host == ERP_HOST || host.endsWith(".mit.asia"))
+                // Let the ERP's login go wherever it needs (SSO, JUNO servers), but only over https.
+                val scheme = request.url.scheme ?: return true
+                return scheme != "https"
             }
 
             override fun onPageFinished(view: WebView, url: String) {
+                trail("page " + url)
                 injectAgent()
+            }
+
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: android.webkit.WebResourceError) {
+                if (request.isForMainFrame) {
+                    trail("error " + error.errorCode + " " + error.description + " " + request.url)
+                    toUi("timeout", JSONObject().put("message", error.description.toString()).toString())
+                }
             }
         }
         root.addView(erpWeb, FrameLayout.LayoutParams(
@@ -139,7 +147,16 @@ class MainActivity : Activity() {
         erpWeb.evaluateJavascript("window.__MIT_CFG=$cfg;$agentJs", null)
     }
 
+    private val trailLog = ArrayList<String>()
+    private fun trail(line: String) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+        trailLog.add("$t $line")
+        while (trailLog.size > 40) trailLog.removeAt(0)
+    }
+
     private fun startSync(email: String, password: String) {
+        trailLog.clear()
+        trail("start, saved email=" + email.isNotEmpty() + ", password=" + password.isNotEmpty())
         pendingEmail = email
         pendingPassword = password
         pendingOtp = ""
@@ -165,8 +182,9 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun post(type: String, json: String) {
             main.post {
-                val host = try { android.net.Uri.parse(erpWeb.url ?: "").host ?: "" } catch (e: Exception) { "" }
-                if (!(host == ERP_HOST || host.endsWith(".mit.asia"))) return@post
+                val scheme = try { android.net.Uri.parse(erpWeb.url ?: "").scheme ?: "" } catch (e: Exception) { "" }
+                if (scheme != "https") return@post
+                if (type != "debug") trail("agent " + type + " " + json.take(160))
                 when (type) {
                     "data" -> {
                         prefs.edit()
@@ -180,6 +198,7 @@ class MainActivity : Activity() {
                             .put("syncedAt", System.currentTimeMillis()).toString())
                     }
                     "debug" -> prefs.edit().putString("lastPage", json).apply()
+                    "status" -> toUi(type, json)
                     else -> toUi(type, if (json.isBlank()) "null" else json)
                 }
             }
@@ -242,9 +261,11 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun copyReport() {
             main.post {
-                val text = prefs.getString("lastPage", "") ?: ""
+                val page = prefs.getString("lastPage", "") ?: ""
+                val text = "MIT Attendance report\n\nSteps:\n" + trailLog.joinToString("\n") +
+                    "\n\nCurrent URL: " + (erpWeb.url ?: "") + "\n\nLast page seen:\n" + page
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                cm.setPrimaryClip(ClipData.newPlainText("MIT Attendance report", text.ifBlank { "No ERP page captured yet." }))
+                cm.setPrimaryClip(ClipData.newPlainText("MIT Attendance report", text))
             }
         }
 

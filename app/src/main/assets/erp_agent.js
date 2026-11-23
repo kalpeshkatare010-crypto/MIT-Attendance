@@ -63,9 +63,12 @@
     var inputs = visibleInputs().map(function (el) {
       return { type: el.type, name: el.name, id: el.id, placeholder: el.placeholder };
     });
+    var buttons = Array.prototype.filter.call(document.querySelectorAll('button, input[type=submit], a, [role=button]'), isVisible)
+      .map(buttonText).filter(Boolean).slice(0, 40);
+    var frames = Array.prototype.map.call(document.querySelectorAll('iframe'), function (f) { return f.src; });
     post('debug', {
       reason: reason, url: location.href, title: document.title,
-      inputs: inputs, text: pageText().slice(0, 4000)
+      inputs: inputs, buttons: buttons, iframes: frames, text: pageText().slice(0, 4000)
     });
   }
 
@@ -215,8 +218,16 @@
   }
 
   // ---------- main loop ----------
+  var lastSnap = 0;
   function tick() {
     if (done) return;
+    if (Date.now() - lastSnap > 5000) { lastSnap = Date.now(); snapshot('progress'); }
+    // Login form inside an iframe → open the iframe page directly.
+    if (!visibleInputs().length) {
+      var fr = Array.prototype.filter.call(document.querySelectorAll('iframe'), isVisible)
+        .filter(function (f) { return /^https:/.test(f.src) && /log|sign|auth|sso/i.test(f.src); })[0];
+      if (fr && !window.__mitFrameJump) { window.__mitFrameJump = true; location.href = fr.src; return; }
+    }
     var c = cfg();
     var ss = window.sessionStorage;
 
