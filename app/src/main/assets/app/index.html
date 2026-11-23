@@ -182,6 +182,20 @@ p{margin:0}
 .semopt{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:56px;padding:0 16px;border-radius:14px;background:var(--light);font-size:16px;font-weight:600;color:var(--ink);text-align:left;width:100%;animation:rise .35s var(--ease) both}
 .semopt.on{background:var(--deep);color:#fff}
 .semopt small{font-size:13px;font-weight:500;opacity:.8}
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:6px;padding:8px 14px calc(env(safe-area-inset-bottom) + 8px);background:#021F26;
+  transform:translateY(110%);transition:transform .4s var(--ease)}
+.nav.show{transform:none}
+.nav button{flex:1;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;color:var(--muted-dark);transition:background .3s var(--ease),color .3s}
+.nav button.on{background:var(--deep);color:#fff}
+.nav button:active{transform:scale(.97)}
+.has-nav .sheet{padding-bottom:80px}
+.gpa{margin:16px 22px 0;background:#fff;color:var(--ink);border-radius:24px;padding:18px 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;animation:rise .55s var(--ease) both}
+.grow{display:flex;align-items:center;gap:12px;background:#fff;border-radius:16px;padding:10px 12px;min-height:68px;animation:rise .45s var(--ease) both}
+.grade{width:52px;height:48px;flex:none;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800}
+.grade.t{background:var(--deep);color:#fff}.grade.o{background:var(--orange);color:var(--on-orange)}.grade.n{background:var(--light);color:var(--ink)}
+.grow .name{font-size:15px;font-weight:700;line-height:1.25}
+.grow .meta{font-size:13px;color:var(--ink-2)}
+.connect{background:#fff;color:var(--ink);border-radius:22px;padding:20px;display:flex;flex-direction:column;gap:14px;animation:rise .5s var(--ease) both}
 .upbar{height:10px;border-radius:99px;background:var(--track);overflow:hidden}
 .upbar i{display:block;height:100%;width:0;background:var(--orange);border-radius:99px;transition:width .3s var(--ease)}
 
@@ -291,7 +305,7 @@ p{margin:0}
 </section>
 
 <!-- HOME -->
-<section class="screen dark off-right" id="s-home">
+<section class="screen dark off-right has-nav" id="s-home">
   <div class="top" style="display:flex;flex-direction:column;gap:6px">
     <div class="row between">
       <div class="sync" id="sync-label"><span id="sync-text">Not synced</span>
@@ -364,6 +378,7 @@ p{margin:0}
     <button class="srow" id="set-erp" style="animation-delay:.09s"><span class="t"><b>Open ERP page</b><span>If something looks wrong, check the ERP itself</span></span><span class="val">Open</span></button>
     <button class="srow" id="set-report" style="animation-delay:.12s"><span class="t"><b>Report a problem</b><span>Copies page details (no password) to send to the developer</span></span><span class="val">Copy</span></button>
     <button class="srow" id="set-update" style="animation-delay:.15s"><span class="t"><b>App updates</b><span id="set-upd-text">Check for a newer version</span></span><span class="val">Check</span></button>
+    <button class="srow" id="set-exam" style="animation-delay:.17s"><span class="t"><b>Exam portal</b><span id="set-exam-text">Not connected</span></span><span class="val" id="set-exam-val">Connect</span></button>
     <div class="srow" style="animation-delay:.18s"><span class="t"><b>Privacy</b><span>Password kept only in this phone's secure storage</span></span></div>
     <div style="margin-top:auto;padding-top:22px;display:flex;flex-direction:column;gap:12px">
       <button class="btn orange" id="logout">Log out</button>
@@ -372,6 +387,28 @@ p{margin:0}
     </div>
   </div>
 </section>
+
+<!-- RESULTS -->
+<section class="screen dark off-right has-nav" id="s-results">
+  <div class="top" style="display:flex;flex-direction:column;gap:6px">
+    <div class="row between">
+      <div class="sync" id="ex-sync-label"><span id="ex-sync-text">Not synced</span>
+        <button class="iconbtn" id="ex-refresh" aria-label="Refresh results"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg></button>
+      </div>
+      <button class="avatar" id="avatar3" aria-label="Your profile and settings"></button>
+    </div>
+    <h1>Exam results</h1>
+    <p style="font-size:15px;color:var(--muted-dark)" id="ex-sub">End-semester results from the exam cell</p>
+    <button class="semchip" id="ex-semchip" style="display:none" aria-label="Change semester"><span id="ex-semlabel"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+  </div>
+  <div id="ex-gpa-box"></div>
+  <div class="sheet panel" style="margin-top:16px"><div class="list" id="ex-list"></div></div>
+</section>
+
+<nav class="nav" id="nav" aria-label="Sections">
+  <button id="nav-att" class="on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M9 3v4M15 3v4M9 15l2 2 4-4"/></svg>Attendance</button>
+  <button id="nav-res"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5zM6 10.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5"/></svg>Results</button>
+</nav>
 
 <div class="scrim" id="scrim"></div>
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
@@ -387,6 +424,7 @@ var $ = function(id){ return document.getElementById(id); };
 var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
 var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+var exam = { prn:'', data:null, syncedAt:0, sem:null, syncing:false, error:'' };
 var state = { email:'', hasPassword:false, data:null, syncedAt:0, target:75, version:'1.0', tab:'risk', current:null, syncing:false, background:false };
 var stack = [];
 
@@ -407,12 +445,36 @@ function show(name, opts){
     document.querySelectorAll('.screen').forEach(function(s){ if (s !== next){ s.classList.remove('off-left','off-down'); s.classList.add('off-right'); } });
   }
   if (name === 'home') renderHome();
+  if (name === 'results') renderResults();
   if (name === 'settings') renderSettings();
+  navFor(name);
 }
+function navFor(name){
+  var tab = name === 'home' || name === 'results';
+  $('nav').classList.toggle('show', tab);
+  $('nav-att').classList.toggle('on', name === 'home');
+  $('nav-res').classList.toggle('on', name === 'results');
+}
+function switchTab(name){
+  var top = stack[stack.length-1];
+  if (top === name) return;
+  var cur = $('s-' + top), next = $('s-' + name);
+  var dir = name === 'results' ? 1 : -1;
+  next.style.transition = 'none'; next.classList.remove('off-left','off-down','off-right');
+  next.style.transform = 'translateX(' + (dir * 30) + '%)'; next.style.opacity = '0';
+  void next.offsetWidth; next.style.transition = ''; next.style.transform = ''; next.style.opacity = '';
+  cur.classList.add(dir > 0 ? 'off-left' : 'off-right');
+  stack[stack.length-1] = name;
+  if (name === 'home') renderHome(); else renderResults();
+  navFor(name);
+}
+$('nav-att').onclick = function(){ switchTab('home'); };
+$('nav-res').onclick = function(){ switchTab('results'); };
 function back(){
   if ($('modal').classList.contains('show')) { closeModal(); return true; }
   if (stack.length <= 1) return false;
   var top = stack[stack.length-1];
+  if (top === 'results'){ switchTab('home'); return true; }
   if (top === 'home' || top === 'sync') return false;
   var cur = $('s-' + stack.pop());
   while (stack.length > 1 && stack[stack.length-1] === 'sync'){ $('s-sync').classList.add('off-right'); stack.pop(); }
@@ -420,6 +482,8 @@ function back(){
   cur.classList.add('off-right');
   prev.classList.remove('off-left','off-down','off-right');
   if (stack[stack.length-1] === 'home') renderHome(true);
+  if (stack[stack.length-1] === 'results') renderResults(true);
+  navFor(stack[stack.length-1]);
   return true;
 }
 document.addEventListener('click', function(e){
@@ -633,6 +697,8 @@ function renderSettings(){
   $('t-val').textContent = state.target + '%';
   $('set-synced').textContent = ago(state.syncedAt);
   $('version').textContent = 'MIT Attendance · v' + state.version;
+  $('set-exam-text').textContent = exam.prn ? 'Connected with PRN ' + exam.prn : 'Not connected';
+  $('set-exam-val').textContent = exam.prn ? 'Disconnect' : 'Connect';
 }
 function setTarget(v){
   state.target = Math.max(50, Math.min(95, v));
@@ -645,11 +711,19 @@ $('t-plus').onclick = function(){ setTarget(state.target + 5); };
 $('set-refresh').onclick = function(){ back(); sync(true); };
 $('set-erp').onclick = function(){ if (N) N.openErp(); };
 $('set-report').onclick = function(){ if (N) N.copyReport(); toast('Copied. Paste it in a message to the developer.'); };
+$('set-exam').onclick = function(){
+  if (!exam.prn){ back(); switchTab('results'); return; }
+  modal('Disconnect exam portal?', 'Your saved PRN and results will be removed from this phone.', [
+    {label:'Disconnect', style:'orange', fn:function(){ if (N) N.examDisconnect(); exam.prn = ''; exam.data = null; exam.syncedAt = 0; renderSettings(); }},
+    {label:'Cancel', style:'ghost'}
+  ]);
+};
 $('logout').onclick = function(){
   modal('Log out?', 'Your saved login and attendance will be removed from this phone.', [
     {label:'Log out', style:'orange', fn:function(){
       if (N) N.logout();
       state.data = null; state.syncedAt = 0; state.email = ''; state.hasPassword = false;
+      exam.prn = ''; exam.data = null; exam.syncedAt = 0;
       $('password').value = '';
       show('welcome', {replace:true}); welcomeAnim();
     }},
@@ -747,6 +821,115 @@ function fail(kind, info){
   ]);
 }
 
+/* ---------- exam results ---------- */
+function exSems(){ return (exam.data && exam.data.semesters) || []; }
+function exCur(){ var l = exSems(); if (!l.length) return null; return l.filter(function(x){ return x.label === exam.sem; })[0] || l[0]; }
+function gradeClass(g){
+  if (!g) return 'n';
+  return /^(f|ab|fail|ff|absent|x)/i.test(g) ? 'o' : 't';
+}
+function renderResults(soft){
+  paintAvatar($('avatar3'));
+  $('ex-sync-text').textContent = exam.syncing ? 'Syncing…' : ago(exam.syncedAt);
+  $('ex-sync-label').classList.toggle('spin', exam.syncing);
+  var list = $('ex-list'), gbox = $('ex-gpa-box');
+  var cs = exCur();
+  $('ex-semchip').style.display = cs ? '' : 'none';
+  if (cs) $('ex-semlabel').textContent = cs.label + (cs === exSems()[0] ? ' · latest' : '');
+  if (!exam.prn){
+    gbox.innerHTML = '';
+    $('ex-sub').textContent = 'End-semester results from the exam cell';
+    list.innerHTML = '<form class="connect" id="ex-form" novalidate>' +
+      '<div style="display:flex;flex-direction:column;gap:4px"><b style="font-size:20px">Connect the exam portal</b><span style="font-size:14px;color:var(--ink-2)">mitaexamcell.in uses your PRN or hall ticket number to log in. It is also the password.</span></div>' +
+      '<div class="error" id="ex-error" role="alert"></div>' +
+      '<div class="field"><label for="prn">PRN or hall ticket number</label><div class="box"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3E6470" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 10h4M7 14h10"/></svg><input id="prn" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Your PRN"></div></div>' +
+      '<button class="btn orange" type="submit">Show my results</button></form>';
+    $('ex-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var v = $('prn').value.trim();
+      if (!v){ var er = $('ex-error'); er.textContent = 'Enter your PRN or hall ticket number.'; er.classList.add('show'); return; }
+      exam.prn = v; exSync(v);
+    });
+    if (exam.error){ var er2 = $('ex-error'); er2.textContent = exam.error; er2.classList.add('show'); }
+    return;
+  }
+  if (!cs){
+    gbox.innerHTML = '';
+    $('ex-sub').textContent = exam.syncing ? 'Logging in to the exam portal…' : 'No results loaded yet';
+    list.innerHTML = exam.syncing ? '<div class="skel"></div><div class="skel"></div><div class="skel"></div>'
+      : '<div class="empty"><b>No results yet</b>Tap refresh to fetch them from the exam portal.</div>';
+    return;
+  }
+  var fails = cs.subjects.filter(function(x){ return gradeClass(x.grade) === 'o'; }).length;
+  $('ex-sub').textContent = cs.subjects.length + ' subjects' + (fails ? ' · ' + fails + ' to clear' : '');
+  var cg = cs.cgpa != null ? cs.cgpa : (exam.data.cgpa != null ? exam.data.cgpa : null);
+  gbox.innerHTML = '<div class="gpa"><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:13px;font-weight:600;color:var(--ink-2)">SGPA</span><span class="big" id="ex-sgpa">—</span></div>' +
+    '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">' +
+    (cg != null ? '<span class="pill t">CGPA ' + cg.toFixed(2) + '</span>' : '') +
+    (cs.result ? '<span class="pill ' + (/fail|atkt|backlog/i.test(cs.result) ? 'o' : 't') + '">' + esc(cs.result) + '</span>' : (fails ? '<span class="pill o">' + fails + ' to clear</span>' : '')) +
+    '</div></div>';
+  if (cs.sgpa != null){ if (soft) $('ex-sgpa').textContent = cs.sgpa.toFixed(2); else countUp($('ex-sgpa'), cs.sgpa, 2, ''); }
+  list.innerHTML = cs.subjects.map(function(x, i){
+    var meta = [x.code, x.credits != null ? x.credits + ' credits' : null, x.gradePoint != null ? 'GP ' + x.gradePoint : null, x.marks ? 'Marks ' + x.marks : null].filter(Boolean).join(' · ');
+    return '<div class="grow" style="animation-delay:' + (soft ? 0 : i * 50) + 'ms"><span class="grade ' + gradeClass(x.grade) + '">' + esc(x.grade || '—') + '</span>' +
+      '<span style="flex:1;display:flex;flex-direction:column;gap:3px"><span class="name">' + esc(x.name) + '</span><span class="meta">' + esc(meta) + '</span></span></div>';
+  }).join('');
+}
+function exSync(prn){
+  if (exam.syncing) return;
+  exam.syncing = true; exam.error = '';
+  renderResults(true);
+  if (N) N.examSync(prn || ''); else setTimeout(exDemo, 1500);
+}
+$('ex-refresh').onclick = function(){ exSync(''); };
+$('avatar3').onclick = function(){ show('settings'); };
+$('ex-semchip').onclick = function(){
+  var cs = exCur();
+  modal('Choose semester', 'Your latest result is shown by default.', []);
+  exSems().forEach(function(x, i){
+    var b = document.createElement('button');
+    b.className = 'semopt' + (cs && x.label === cs.label ? ' on' : '');
+    b.style.animationDelay = (i * 40) + 'ms';
+    b.innerHTML = '<span>' + esc(x.label) + (i === 0 ? ' <small>· latest</small>' : '') + '</span><small>' + (x.sgpa != null ? 'SGPA ' + x.sgpa.toFixed(2) : x.subjects.length + ' subjects') + '</small>';
+    b.onclick = function(){ exam.sem = x.label; closeModal(); renderResults(); };
+    $('m-actions').appendChild(b);
+  });
+};
+function examMsg(type, p){
+  if (type === 'exam_data'){
+    exam.syncing = false; exam.data = p.data; exam.syncedAt = p.syncedAt || Date.now();
+    if (exam.sem && !exSems().some(function(x){ return x.label === exam.sem; })) exam.sem = null;
+    if (stack[stack.length-1] === 'results') renderResults();
+    return true;
+  }
+  if (type === 'status' && p && /^exam_|reading_results/.test(p.step || '')){
+    if (p.step === 'reading_results') $('ex-sync-text').textContent = 'Reading ' + (p.label || 'results') + '…';
+    return true;
+  }
+  if (type === 'exam_need_prn'){ exam.syncing = false; exam.prn = ''; renderResults(); return true; }
+  if (type === 'exam_login_failed'){
+    exam.syncing = false;
+    if (!exam.data){ exam.prn = ''; exam.error = (p && p.message) || 'The exam portal did not accept that PRN.'; if (N) N.examDisconnect(); }
+    else toast('Exam portal login failed.');
+    renderResults(true); return true;
+  }
+  if (/^exam_(timeout|failed|manual)$/.test(type)){
+    exam.syncing = false; renderResults(true);
+    toast(type === 'exam_manual' ? 'The exam portal is asking for a captcha.' : 'Could not read results from the exam portal.', 'Copy report', function(){ if (N) N.copyExamReport(); });
+    return true;
+  }
+  return false;
+}
+function exDemo(){
+  App.fromNative('exam_data', { syncedAt: Date.now(), data: { cgpa: 7.85, semesters: [
+    { label:'Semester IV', number:4, sgpa:7.62, cgpa:7.85, result:'Pass', subjects:[
+      {code:'PPE251', name:'Polymer Physics', credits:4, grade:'A', gradePoint:9},
+      {code:'PPE252', name:'Polymer Processing', credits:3, grade:'B+', gradePoint:8},
+      {code:'PPE253', name:'Heat Transfer', credits:3, grade:'F', gradePoint:0} ]},
+    { label:'Semester III', number:3, sgpa:8.10, cgpa:7.96, result:'Pass', subjects:[
+      {code:'PPE201', name:'Polymer Chemistry', credits:4, grade:'O', gradePoint:10} ]} ]}});
+}
+
 /* ---------- semester picker ---------- */
 $('semchip').onclick = function(){
   var cs = currentSem(), cur = state.data && state.data.current;
@@ -798,6 +981,7 @@ window.App = {
   back: back,
   fromNative: function(type, p){
     if (updateMsg(type, p)) return;
+    if (examMsg(type, p)) return;
     if (type === 'status'){
       if (p && p.step === 'reading_semesters'){
         setStep('opening_attendance');
@@ -868,6 +1052,8 @@ function init(){
       state.email = s.email || ''; state.hasPassword = !!s.hasPassword; state.target = s.target || 75;
       state.version = s.version || '1.0'; state.syncedAt = s.syncedAt || 0;
       if (s.cache) state.data = JSON.parse(s.cache);
+      exam.prn = s.prn || ''; exam.syncedAt = s.examSyncedAt || 0;
+      if (s.examCache) exam.data = JSON.parse(s.examCache);
     } catch (e) {}
   }
   $('email').value = state.email;
@@ -875,6 +1061,7 @@ function init(){
   if (state.data){
     show('home', {replace:true});
     if (state.hasPassword) setTimeout(function(){ sync(true); }, 600);
+    if (exam.prn) setTimeout(function(){ exSync(''); }, 1500);
   } else if (state.hasPassword){
     sync(false);
   } else {

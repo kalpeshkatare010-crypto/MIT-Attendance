@@ -10,6 +10,7 @@ Developed by **Kalpesh Katare**.
 - Home: average attendance and the subjects below 75%
 - All subjects: attendance %, sessions done %, code and credits
 - Subject detail: faculty, credits, attendance ring and session progress
+- Results tab: end-semester results from the exam cell portal (mitaexamcell.in), with SGPA, CGPA and grades for each semester. You log in with your PRN or hall ticket number.
 - Auto refresh from the ERP, plus alerts when a subject drops below your target
 - Your password is kept only in the phone's secure storage
 

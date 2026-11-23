@@ -52,6 +52,7 @@ class MainActivity : Activity() {
     private var pendingOtp: String = ""
     private var loginAttempt = 0
 
+    private lateinit var exam: ExamPortal
     private val updater by lazy { Updater(this) { type, json -> toUi(type, json) } }
 
     private val prefs: SharedPreferences by lazy {
@@ -119,6 +120,8 @@ class MainActivity : Activity() {
         }
         root.addView(erpWeb, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+
+        exam = ExamPortal(this, root, secure, prefs) { type, json -> toUi(type, json) }
 
         // App UI (on top).
         uiWeb = WebView(this)
@@ -226,6 +229,9 @@ class MainActivity : Activity() {
             o.put("cache", prefs.getString("cache", "") ?: "")
             o.put("syncedAt", prefs.getLong("syncedAt", 0L))
             o.put("target", prefs.getInt("target", 75))
+            o.put("prn", exam.savedPrn())
+            o.put("examCache", prefs.getString("exam_cache", "") ?: "")
+            o.put("examSyncedAt", prefs.getLong("exam_syncedAt", 0L))
             o.put("version", try {
                 packageManager.getPackageInfo(packageName, 0).versionName
             } catch (e: Exception) { "1.0" })
@@ -283,11 +289,26 @@ class MainActivity : Activity() {
         fun checkUpdate(manual: Boolean) { updater.check(manual) }
 
         @JavascriptInterface
+        fun examSync(prn: String) { main.post { exam.sync(if (prn.isBlank()) null else prn) } }
+
+        @JavascriptInterface
+        fun examDisconnect() { main.post { exam.disconnect() } }
+
+        @JavascriptInterface
+        fun copyExamReport() {
+            main.post {
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("Exam portal report", exam.report()))
+            }
+        }
+
+        @JavascriptInterface
         fun downloadUpdate() { updater.download() }
 
         @JavascriptInterface
         fun logout() {
             main.post {
+                exam.disconnect()
                 secure.edit().clear().apply()
                 prefs.edit().remove("cache").remove("syncedAt").remove("lastPage").apply()
                 CookieManager.getInstance().removeAllCookies(null)

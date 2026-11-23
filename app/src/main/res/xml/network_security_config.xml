@@ -4,5 +4,6 @@
     <!-- The college ERP serves its login page over plain http. -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">mit.asia</domain>
+        <domain includeSubdomains="true">mitaexamcell.in</domain>
     </domain-config>
 </network-security-config>
