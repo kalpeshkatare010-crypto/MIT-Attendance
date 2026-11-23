@@ -34,7 +34,7 @@ import org.json.JSONObject
 class MainActivity : Activity() {
 
     companion object {
-        const val ERP_URL = "https://erp.mit.asia/"
+        const val ERP_URL = "http://erp.mit.asia/"
         const val ERP_HOST = "erp.mit.asia"
     }
 
@@ -92,16 +92,15 @@ class MainActivity : Activity() {
             domStorageEnabled = true
             loadWithOverviewMode = true
             useWideViewPort = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(erpWeb, true)
         erpWeb.addJavascriptInterface(AgentBridge(), "MITAgent")
         erpWeb.webChromeClient = WebChromeClient()
         erpWeb.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                // Let the ERP's login go wherever it needs (SSO, JUNO servers), but only over https.
-                val scheme = request.url.scheme ?: return true
-                return scheme != "https"
+                // Let the ERP's login go wherever it needs, over https, or http on the college's own servers.
+                return !allowed(request.url)
             }
 
             override fun onPageFinished(view: WebView, url: String) {
@@ -147,6 +146,15 @@ class MainActivity : Activity() {
         erpWeb.evaluateJavascript("window.__MIT_CFG=$cfg;$agentJs", null)
     }
 
+    private fun allowed(uri: android.net.Uri): Boolean {
+        val host = uri.host ?: return false
+        return when (uri.scheme) {
+            "https" -> true
+            "http" -> host == ERP_HOST || host.endsWith(".mit.asia") || host == "mit.asia"
+            else -> false
+        }
+    }
+
     private val trailLog = ArrayList<String>()
     private fun trail(line: String) {
         val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
@@ -182,8 +190,8 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun post(type: String, json: String) {
             main.post {
-                val scheme = try { android.net.Uri.parse(erpWeb.url ?: "").scheme ?: "" } catch (e: Exception) { "" }
-                if (scheme != "https") return@post
+                val ok = try { allowed(android.net.Uri.parse(erpWeb.url ?: "")) } catch (e: Exception) { false }
+                if (!ok) return@post
                 if (type != "debug") trail("agent " + type + " " + json.take(160))
                 when (type) {
                     "data" -> {
