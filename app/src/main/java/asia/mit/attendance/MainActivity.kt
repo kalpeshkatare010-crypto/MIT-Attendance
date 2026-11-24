@@ -279,7 +279,8 @@ class MainActivity : Activity() {
             main.post {
                 val page = prefs.getString("lastPage", "") ?: ""
                 val text = "MIT Attendance report\n\nSteps:\n" + trailLog.joinToString("\n") +
-                    "\n\nCurrent URL: " + (erpWeb.url ?: "") + "\n\nLast page seen:\n" + page
+                    "\n\nCurrent URL: " + (erpWeb.url ?: "") + "\n\nLast page seen:\n" + page +
+                    "\n\n==========\n\n" + exam.report()
                 val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 cm.setPrimaryClip(ClipData.newPlainText("MIT Attendance report", text))
             }

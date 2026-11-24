@@ -85,7 +85,7 @@
     var rows = rowsOf(table);
     for (var h = 0; h < Math.min(rows.length, 6); h++) {
       var head = rows[h];
-      var name = colIndex(head, /course|subject|paper|title/i, /code/i);
+      var name = colIndex(head, /course|subject|paper/i, /code/i);
       var code = colIndex(head, /code/i);
       var grade = colIndex(head, /^grade$|grade\s*obt|^grd/i);
       if (grade < 0) grade = colIndex(head, /grade/i, /point|gp/i);
@@ -187,10 +187,15 @@
       for (var h = 0; h < Math.min(rows.length, 6); h++) {
         var head = rows[h];
         if (head.length < 3) continue;
-        var subj = colIndex(head, /course|subject|paper|title|code/i);
+        var subj = colIndex(head, /course|subject|paper|code/i);
         if (subj < 0) continue;
+        // must look like marks: a marks-type column, and mostly short numeric cells
+        if (!head.some(function (x) { return /marks|total|ca\s*\d|test|internal|assign|out\s*of|max|ise|mse|tw|obtain|score|unit|practical|oral|attend/i.test(x); })) continue;
+        if (head.some(function (x) { return /notice|description|message|subject\s*line|date/i.test(x) && !/marks/i.test(x); }) && !head.some(function (x) { return /marks|total/i.test(x); })) continue;
         var body = rows.slice(h + 1).filter(function (r) {
-          return r.length >= head.length - 1 && r.some(function (c) { return /\d/.test(c); }) && r.join('').trim();
+          if (r.length < head.length - 1 || !r.join('').trim()) return false;
+          var nums = r.filter(function (c) { return /^\s*(\d{1,3}(\.\d+)?|ab|a|-)\s*$/i.test(c); }).length;
+          return nums >= 2 && r.every(function (c) { return c.length < 90; });
         });
         if (!body.length) continue;
         groups.push({ label: labelNear(t), headers: head, rows: body.slice(0, 40) });
@@ -314,7 +319,7 @@
   }
 
   // ---------- main loop ----------
-  var RESULT_RE = /^(exam\s*)?results?$|result|grade\s*card|mark\s*sheet|marksheet|statement\s+of\s+marks/i;
+  var RESULT_RE = /^(exam\s*|final\s*|semester\s*|view\s*|my\s*)?results?$|result\s*(view|card)|grade\s*card|mark\s*sheet|marksheet|statement\s+of\s+marks|gradesheet|grade\s*sheet/i;
   var INTERNAL_RE = /final\s*internal|internal\s*marks|internal\s*assessment/i;
   function tick() {
     if (done) return;
@@ -395,10 +400,10 @@
 
     // Move on when a section can't be found.
     var since = Date.now() - (p.at || startedAt);
-    if (p.phase === 'results' && since > 25000 && ss.getItem('exam_sub_' + c.attempt)) {
+    if (p.phase === 'results' && since > 15000 && ss.getItem('exam_sub_' + c.attempt)) {
       p.phase = 'internal'; p.at = Date.now(); savePhase(p); clicks = 0; window.__examNoWalk = false; return;
     }
-    if (p.phase === 'internal' && since > 25000) { publish(p); return; }
+    if (p.phase === 'internal' && since > 15000) { publish(p); return; }
 
     if (Date.now() - startedAt > 60000) {
       done = true;
